@@ -542,7 +542,7 @@ class Computed<A, B> extends BaseReadableBox<B> {
   }
 }
 
-class State<A> extends BaseReadableBox<A> implements IBox<A> {
+export class State<A> extends BaseReadableBox<A> implements IBox<A> {
   protected orderedTraces: Array<OrderedStackTrace> = [];
   private readonly equals: (a: A, b: A) => boolean;
 

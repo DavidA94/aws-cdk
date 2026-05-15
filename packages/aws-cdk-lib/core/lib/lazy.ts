@@ -1,3 +1,4 @@
+import { State } from './helpers-internal/box';
 import type { IResolvable, IResolveContext } from './resolvable';
 import { Token } from './token';
 
@@ -328,19 +329,27 @@ interface ILazyProducer<A> {
   produce(context: IResolveContext): A | undefined;
 }
 
-abstract class LazyBase<A> implements IResolvable {
-  public readonly creationStack!: string[];
-  private _cached?: A;
+abstract class LazyBase<A> extends State<A> {
+  private readonly producer: ILazyProducer<A>;
+  private readonly cache: boolean;
+  private resolved = false;
 
-  constructor(private readonly producer: ILazyProducer<A>, private readonly cache: boolean) {
+  constructor(producer: ILazyProducer<A>, cache: boolean) {
+    super(undefined as any); // starts empty — populated on first get()
+    this.producer = producer;
+    this.cache = cache;
   }
 
-  public resolve(context: IResolveContext) {
+  public get() {
     if (this.cache) {
-      return this._cached ?? (this._cached = this.producer.produce(context));
+      if (!this.resolved) {
+        this.resolved = true;
+        super.set(this.producer.produce(undefined as any) as A);
+      }
     } else {
-      return this.producer.produce(context);
+      super.set(this.producer.produce(undefined as any) as A);
     }
+    return super.get();
   }
 
   public toString() {
@@ -370,10 +379,10 @@ class LazyList extends LazyBase<Array<string>> {
     super(producer, cache);
   }
 
-  public resolve(context: IResolveContext) {
-    const resolved = super.resolve(context);
-    if (resolved?.length === 0 && this.options.omitEmpty) {
-      return undefined;
+  public get() {
+    const resolved = super.get();
+    if ((resolved as any)?.length === 0 && this.options.omitEmpty) {
+      return undefined as any;
     }
     return resolved;
   }
@@ -384,10 +393,10 @@ class LazyAny extends LazyBase<any> {
     super(producer, cache);
   }
 
-  public resolve(context: IResolveContext) {
-    const resolved = super.resolve(context);
+  public get() {
+    const resolved = super.get();
     if (Array.isArray(resolved) && resolved.length === 0 && this.options.omitEmptyArray) {
-      return undefined;
+      return undefined as any;
     }
     return resolved;
   }
