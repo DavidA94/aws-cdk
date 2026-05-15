@@ -1,4 +1,4 @@
-import { State } from './helpers-internal/box';
+import { ReadonlyState } from './helpers-internal/box';
 import type { IResolvable, IResolveContext } from './resolvable';
 import { Token } from './token';
 
@@ -167,7 +167,7 @@ export class Lazy {
    * cannot depend on the Stack the Token is used in.
    */
   public static string(producer: IStableStringProducer, options: LazyStringValueOptions = {}) {
-    return Token.asString(new LazyString(producer, true), options);
+    return Token.asString(new LazyBox(new LazyString(producer, true)), options);
   }
 
   /**
@@ -214,7 +214,7 @@ export class Lazy {
    * cannot depend on the Stack the Token is used in.
    */
   public static number(producer: IStableNumberProducer) {
-    return Token.asNumber(new LazyNumber(producer, true));
+    return Token.asNumber(new LazyBox(new LazyNumber(producer, true)));
   }
 
   /**
@@ -277,7 +277,7 @@ export class Lazy {
    * cannot depend on the Stack the Token is used in.
    */
   public static list(producer: IStableListProducer, options: LazyListValueOptions = {}) {
-    return Token.asList(new LazyList(producer, true, options), options);
+    return Token.asList(new LazyBox(new LazyList(producer, true, options)), options);
   }
 
   /**
@@ -302,7 +302,7 @@ export class Lazy {
    * resolution context.
    */
   public static any(producer: IStableAnyProducer, options: LazyAnyValueOptions = {}): IResolvable {
-    return new LazyAny(producer, true, options);
+    return new LazyBox(new LazyAny(producer, true, options));
   }
 
   /**
@@ -329,27 +329,19 @@ interface ILazyProducer<A> {
   produce(context: IResolveContext): A | undefined;
 }
 
-abstract class LazyBase<A> extends State<A> {
-  private readonly producer: ILazyProducer<A>;
-  private readonly cache: boolean;
-  private resolved = false;
+abstract class LazyBase<A> implements IResolvable {
+  public readonly creationStack!: string[];
+  private _cached?: A;
 
-  constructor(producer: ILazyProducer<A>, cache: boolean) {
-    super(undefined as any); // starts empty — populated on first get()
-    this.producer = producer;
-    this.cache = cache;
+  constructor(private readonly producer: ILazyProducer<A>, private readonly cache: boolean) {
   }
 
-  public get() {
+  public resolve(context: IResolveContext) {
     if (this.cache) {
-      if (!this.resolved) {
-        this.resolved = true;
-        super.set(this.producer.produce(undefined as any) as A);
-      }
+      return this._cached ?? (this._cached = this.producer.produce(context));
     } else {
-      super.set(this.producer.produce(undefined as any) as A);
+      return this.producer.produce(context);
     }
-    return super.get();
   }
 
   public toString() {
@@ -368,6 +360,39 @@ abstract class LazyBase<A> extends State<A> {
 // Setting singleton value on prototype to save memory and allocations
 (LazyBase.prototype as any).creationStack = ['Token stack traces are no longer captured'];
 
+/**
+ * A Box wrapper around a cached Lazy.
+ *
+ * Resolves the inner Lazy once and stores the result in a State box,
+ * making cached Lazy tokens participate in the Box ecosystem (Box.isBox,
+ * derive, getStackTraces).
+ */
+class LazyBox<A> extends ReadonlyState<A> {
+  private readonly inner: LazyBase<A>;
+  private produced = false;
+
+  constructor(inner: LazyBase<A>) {
+    super(undefined as any);
+    this.inner = inner;
+  }
+
+  public get() {
+    if (!this.produced) {
+      this.produced = true;
+      this.value = this.inner.resolve(undefined as any) as A;
+    }
+    return super.get();
+  }
+
+  public toString() {
+    return Token.asString(this);
+  }
+
+  public toJSON(): any {
+    return '<unresolved-lazy>';
+  }
+}
+
 class LazyString extends LazyBase<string> {
 }
 
@@ -379,10 +404,10 @@ class LazyList extends LazyBase<Array<string>> {
     super(producer, cache);
   }
 
-  public get() {
-    const resolved = super.get();
-    if ((resolved as any)?.length === 0 && this.options.omitEmpty) {
-      return undefined as any;
+  public resolve(context: IResolveContext) {
+    const resolved = super.resolve(context);
+    if (resolved?.length === 0 && this.options.omitEmpty) {
+      return undefined;
     }
     return resolved;
   }
@@ -393,10 +418,10 @@ class LazyAny extends LazyBase<any> {
     super(producer, cache);
   }
 
-  public get() {
-    const resolved = super.get();
+  public resolve(context: IResolveContext) {
+    const resolved = super.resolve(context);
     if (Array.isArray(resolved) && resolved.length === 0 && this.options.omitEmptyArray) {
-      return undefined as any;
+      return undefined;
     }
     return resolved;
   }

@@ -401,15 +401,21 @@ describe('Boxes', () => {
       expect(Box.isBox(token)).toBe(true);
     });
 
-    test('Lazy.uncachedAny() is a box', () => {
+    test('Lazy.uncachedAny() is not a box', () => {
       const token = Lazy.uncachedAny({ produce: () => 42 });
-      expect(Box.isBox(token)).toBe(true);
+      expect(Box.isBox(token)).toBe(false);
     });
 
     test('Lazy.string() produces a box (encoded as string)', () => {
       const str = Lazy.string({ produce: () => 'hi' });
       const reversed = Tokenization.reverse(str);
       expect(Box.isBox(reversed)).toBe(true);
+    });
+
+    test('Lazy.uncachedString() is not a box', () => {
+      const str = Lazy.uncachedString({ produce: () => 'hi' });
+      const reversed = Tokenization.reverse(str);
+      expect(Box.isBox(reversed)).toBe(false);
     });
 
     test('Lazy.number() produces a box (encoded as number)', () => {
@@ -431,7 +437,7 @@ describe('Boxes', () => {
 
     test('Lazy.any() supports derive()', () => {
       const token = Lazy.any({ produce: () => 5 });
-      const derived = token.derive((x: number) => x * 2);
+      const derived = (token as any).derive((x: number) => x * 2);
       expect(derived.resolve({} as any)).toBe(10);
     });
 
